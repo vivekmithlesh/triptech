@@ -1,0 +1,24 @@
+// Roamio — Prisma schema.
+//
+// Prisma is used here for type-safe introspection of the Supabase Postgres DB.
+// The live data layer (Brick 05+) goes through the Supabase client; Prisma
+// documents the schema and can generate a typed client.
+//
+// USER ACTION (after the DB schema from Brick 01 is applied, with
+// DATABASE_URL + DIRECT_URL set in .env.local):
+//   1. npx prisma db pull      # introspect: fills in the models below
+//   2. npx prisma generate     # generate the typed client
+//
+// PostGIS `geography` and pgvector `vector` columns are introspected as
+// `Unsupported("…")` — that is expected and fine; we read/write those
+// columns through Supabase RPCs, not Prisma.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
