@@ -157,3 +157,34 @@ export interface Alert {
   filters: Record<string, unknown> | null;
   created_at: string;
 }
+
+// --- Data-layer helper types -------------------------------------------------
+
+// Filters accepted by getPlaces() (see src/lib/actions/places.ts).
+export interface PlaceFilters {
+  category?: PlaceCategory;
+  city?: string;
+  /** Minimum rating (inclusive). */
+  minRating?: number;
+  /** Maximum price_level (inclusive, 1–4). */
+  maxPrice?: number;
+  /** When true, only places flagged is_historic. */
+  historicOnly?: boolean;
+  /** Case-insensitive match against the place name. */
+  search?: string;
+  limit?: number;
+  sort?: "rating" | "reviews" | "name";
+}
+
+// A map viewport: south-west + north-east corners.
+export interface MapBounds {
+  minLng: number;
+  minLat: number;
+  maxLng: number;
+  maxLat: number;
+}
+
+// A trip with its ordered items (each item's place populated).
+export interface TripWithItems extends Trip {
+  items: TripItem[];
+}
