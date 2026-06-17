@@ -60,6 +60,18 @@ export async function getPlaceById(id: string): Promise<Place | null> {
   return data ? mapPlaceRow(data as PlaceRow) : null;
 }
 
+/** Places for a set of ids (order not guaranteed). Empty input → []. */
+export async function getPlacesByIds(ids: string[]): Promise<Place[]> {
+  if (ids.length === 0) return [];
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("places_with_coords")
+    .select("*")
+    .in("id", Array.from(new Set(ids)));
+  if (error) throw new Error(`getPlacesByIds: ${error.message}`);
+  return (data ?? []).map(mapPlaceRow);
+}
+
 /** Most-saved places (the trending feed), ties broken by rating. */
 export async function getTrendingPlaces(
   { limit = 8 }: { limit?: number } = {}

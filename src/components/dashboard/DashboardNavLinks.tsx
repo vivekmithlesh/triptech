@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Heart, LayoutDashboard, MapPin } from "lucide-react";
+import { Bell, BookOpen, Heart, LayoutDashboard, MapPin } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ const ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/trips", label: "Trips", icon: MapPin, exact: false },
   { href: "/dashboard/saved", label: "Saved", icon: Heart, exact: false },
+  { href: "/dashboard/journal", label: "Journal", icon: BookOpen, exact: false },
   { href: "/dashboard/alerts", label: "Alerts", icon: Bell, exact: false },
 ] as const;
 

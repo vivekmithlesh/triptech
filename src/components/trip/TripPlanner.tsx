@@ -46,7 +46,8 @@ import {
 } from "@/lib/actions/trips";
 import type { TripItem, TripWithItems } from "@/types/database";
 import { cn, formatDateRange, getCategoryLabel } from "@/lib/utils";
-import { dayColor } from "@/components/trip/TripMap";
+import { dayColor } from "@/lib/dayColors";
+import { TripShareButton } from "@/components/trip/TripShareButton";
 import { Button } from "@/components/ui/button";
 
 const TripMap = dynamic(() => import("@/components/trip/TripMap"), {
@@ -286,6 +287,11 @@ export function TripPlanner({ trip }: { trip: TripWithItems }) {
                 Add places
               </Link>
             </Button>
+            <TripShareButton
+              tripId={trip.id}
+              initialIsPublic={trip.is_public}
+              initialSlug={trip.share_slug}
+            />
             <Button
               size="sm"
               onClick={onOptimise}

@@ -14,22 +14,7 @@ import {
 } from "react-leaflet";
 
 import type { TripItem } from "@/types/database";
-
-// Distinct colour per day; wraps for very long trips.
-export const DAY_COLORS = [
-  "#0F9E75",
-  "#378ADD",
-  "#E9A23B",
-  "#D9534F",
-  "#7A5CC0",
-  "#0F6E56",
-  "#C07A2B",
-  "#2BB3C0",
-];
-
-export function dayColor(day: number): string {
-  return DAY_COLORS[(day - 1) % DAY_COLORS.length];
-}
+import { dayColor } from "@/lib/dayColors";
 
 function numberIcon(n: number, color: string): L.DivIcon {
   return L.divIcon({

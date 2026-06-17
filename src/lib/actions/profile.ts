@@ -48,3 +48,25 @@ export async function updateProfile(
   revalidatePath("/dashboard");
   return data as Profile;
 }
+
+/** Toggles the journal's "colourless" (grayscale) mode, merged into preferences. */
+export async function setColourlessMode(on: boolean): Promise<void> {
+  const user = await requireUser();
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("preferences")
+    .eq("id", user.id)
+    .single();
+  const prefs = {
+    ...((data?.preferences ?? {}) as Record<string, unknown>),
+    colourless: on,
+  };
+  const { error } = await supabase
+    .from("profiles")
+    .update({ preferences: prefs })
+    .eq("id", user.id);
+  if (error) throw new Error(`setColourlessMode: ${error.message}`);
+  revalidatePath("/journal");
+  revalidatePath("/dashboard/journal");
+}
