@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
+  Bell,
   BookOpen,
   Coins,
   Compass,
@@ -14,6 +15,7 @@ import { getMyProfile } from "@/lib/actions/profile";
 import { getMyTrips, getTripById } from "@/lib/actions/trips";
 import { getSavedPlaces } from "@/lib/actions/saved";
 import { getMyJournal } from "@/lib/actions/journal";
+import { getFestivalAlertsForUser } from "@/lib/actions/weather";
 import { formatDateRange } from "@/lib/utils";
 import { PlaceCard } from "@/components/PlaceCard";
 import { CreateTripDialog } from "@/components/dashboard/CreateTripDialog";
@@ -32,10 +34,11 @@ async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
 
 export default async function DashboardOverview() {
   const profile = await safe(getMyProfile(), null);
-  const [trips, saved, journal] = await Promise.all([
+  const [trips, saved, journal, festivalAlerts] = await Promise.all([
     safe(getMyTrips(), []),
     safe(getSavedPlaces(), []),
     safe(getMyJournal(), []),
+    safe(getFestivalAlertsForUser(), []),
   ]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -61,6 +64,38 @@ export default async function DashboardOverview() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
+      {festivalAlerts.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-brand/30 bg-brand-light/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white">
+              <Bell className="h-4 w-4" />
+            </span>
+            <div className="text-sm">
+              <p className="font-medium">Festivals coming up near your saved places</p>
+              <p className="text-muted-foreground">
+                {festivalAlerts
+                  .slice(0, 3)
+                  .map(
+                    (f) =>
+                      `${f.name} (${f.city}${
+                        formatDateRange(f.start_date, f.end_date)
+                          ? `, ${formatDateRange(f.start_date, f.end_date)}`
+                          : ""
+                      })`
+                  )
+                  .join(" · ")}
+              </p>
+            </div>
+          </div>
+          <Button asChild variant="outline" size="sm" className="shrink-0">
+            <Link href="/festivals">
+              View festivals
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      )}
+
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">
