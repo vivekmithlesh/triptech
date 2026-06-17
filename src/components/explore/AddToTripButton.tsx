@@ -24,6 +24,8 @@ export interface AddToTripButtonProps {
   trips: Trip[] | null;
   /** Sensible default title for a brand-new trip (e.g. the place's city). */
   defaultTripTitle?: string;
+  /** Render a full-width labelled button instead of the compact icon. */
+  full?: boolean;
 }
 
 export function AddToTripButton({
@@ -31,6 +33,7 @@ export function AddToTripButton({
   placeName,
   trips,
   defaultTripTitle,
+  full = false,
 }: AddToTripButtonProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -47,10 +50,10 @@ export function AddToTripButton({
     return (
       <Button
         type="button"
-        size="icon"
+        size={full ? "default" : "icon"}
         variant="secondary"
         aria-label="Add to a trip"
-        className="h-9 w-9 rounded-full shadow-sm"
+        className={full ? "w-full" : "h-9 w-9 rounded-full shadow-sm"}
         onClick={(e) => {
           stop(e);
           toast("Log in to save places to a trip.");
@@ -58,6 +61,7 @@ export function AddToTripButton({
         }}
       >
         <Plus className="h-4 w-4" />
+        {full && "Add to a trip"}
       </Button>
     );
   }
@@ -92,10 +96,10 @@ export function AddToTripButton({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          size="icon"
+          size={full ? "default" : "icon"}
           variant="secondary"
           aria-label="Add to a trip"
-          className="h-9 w-9 rounded-full shadow-sm"
+          className={full ? "w-full" : "h-9 w-9 rounded-full shadow-sm"}
           disabled={pending}
           onClick={stop}
         >
@@ -104,6 +108,7 @@ export function AddToTripButton({
           ) : (
             <Plus className="h-4 w-4" />
           )}
+          {full && "Add to a trip"}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

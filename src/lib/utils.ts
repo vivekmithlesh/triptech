@@ -49,6 +49,40 @@ export function formatCount(n: number | null | undefined): string {
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
 }
 
+const DAY_LABEL: Record<string, string> = {
+  mon: "Mon",
+  tue: "Tue",
+  wed: "Wed",
+  thu: "Thu",
+  fri: "Fri",
+  sat: "Sat",
+  sun: "Sun",
+};
+
+/**
+ * Turns the seed's opening_hours jsonb ({ "mon_sun": "08:00-17:30" }) into
+ * display rows. Handles "open 24h" and skips empty/unknown shapes.
+ */
+export function formatOpeningHours(
+  oh: Record<string, unknown> | null | undefined
+): { label: string; hours: string }[] {
+  if (!oh || typeof oh !== "object") return [];
+  const rows: { label: string; hours: string }[] = [];
+  for (const [key, raw] of Object.entries(oh)) {
+    if (typeof raw !== "string") continue;
+    const label = key
+      .split("_")
+      .map((d) => DAY_LABEL[d] ?? d)
+      .join("–");
+    const value =
+      raw === "00:00-23:59" || raw === "00:00-24:00"
+        ? "Open 24 hours"
+        : raw.replace("-", " – ");
+    rows.push({ label, hours: value });
+  }
+  return rows;
+}
+
 /**
  * Human date range from ISO date strings, collapsing shared parts:
  * "14 Mar 2026", "14–17 Mar 2026", "28 Feb – 3 Mar 2026",
