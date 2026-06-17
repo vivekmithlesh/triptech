@@ -1,5 +1,6 @@
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { CommandPalette } from "@/components/CommandPalette";
 
 // Chrome for the public + app marketing pages. /auth (full-screen) and
 // /dashboard (own sidebar layout) live outside this group, so they don't
@@ -14,6 +15,7 @@ export default function MainLayout({
       <Navbar />
       <main className="flex-1">{children}</main>
       <Footer />
+      <CommandPalette />
     </div>
   );
 }
