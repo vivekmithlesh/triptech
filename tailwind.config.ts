@@ -16,7 +16,22 @@ const config: Config = {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ["var(--font-dm-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+      },
       colors: {
+        // Roamio brand palette (warm, premium, map-first).
+        brand: {
+          deep: "#13343B",
+          DEFAULT: "#0F9E75",
+          light: "#D4F0E6",
+          teal: "#0F6E56",
+          pale: "#9FE1CB",
+          accent: "#5DCAA5",
+          sky: "#378ADD",
+          sand: "#E9C46A",
+          ink: "#0B1F24",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
