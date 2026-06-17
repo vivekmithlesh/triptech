@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { format, isValid, parseISO } from "date-fns";
 import { MapPin, type LucideIcon } from "lucide-react";
 
 import { CATEGORY_MAP } from "@/lib/constants";
@@ -46,4 +47,28 @@ export function formatCount(n: number | null | undefined): string {
   if (n < 10000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
   if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
+}
+
+/**
+ * Human date range from ISO date strings, collapsing shared parts:
+ * "14 Mar 2026", "14–17 Mar 2026", "28 Feb – 3 Mar 2026",
+ * "28 Dec 2026 – 2 Jan 2027". Returns "" when start is missing/invalid.
+ */
+export function formatDateRange(
+  start?: string | null,
+  end?: string | null
+): string {
+  if (!start) return "";
+  const s = parseISO(start);
+  if (!isValid(s)) return "";
+
+  const e = end ? parseISO(end) : null;
+  if (!e || !isValid(e) || +e === +s) return format(s, "d MMM yyyy");
+
+  const sameYear = s.getFullYear() === e.getFullYear();
+  const sameMonth = sameYear && s.getMonth() === e.getMonth();
+
+  if (sameMonth) return `${format(s, "d")}–${format(e, "d MMM yyyy")}`;
+  if (sameYear) return `${format(s, "d MMM")} – ${format(e, "d MMM yyyy")}`;
+  return `${format(s, "d MMM yyyy")} – ${format(e, "d MMM yyyy")}`;
 }

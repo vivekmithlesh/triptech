@@ -69,6 +69,45 @@ export async function getTrendingPlaces(
   return (data ?? []).map(mapPlaceRow);
 }
 
+/** Number of places per category (only categories with ≥1 place appear). */
+export async function getCategoryCounts(): Promise<
+  Partial<Record<PlaceCategory, number>>
+> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("places_with_coords")
+    .select("category");
+  if (error) throw new Error(`getCategoryCounts: ${error.message}`);
+
+  const counts: Partial<Record<PlaceCategory, number>> = {};
+  for (const row of (data ?? []) as { category: PlaceCategory }[]) {
+    counts[row.category] = (counts[row.category] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** Headline catalog stats for the home page (total places + distinct geos). */
+export async function getCatalogStats(): Promise<{
+  places: number;
+  cities: number;
+  countries: number;
+}> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("places_with_coords")
+    .select("city, country");
+  if (error) throw new Error(`getCatalogStats: ${error.message}`);
+
+  const rows = (data ?? []) as { city: string | null; country: string | null }[];
+  const cities = new Set<string>();
+  const countries = new Set<string>();
+  for (const r of rows) {
+    if (r.city) cities.add(r.city);
+    if (r.country) countries.add(r.country);
+  }
+  return { places: rows.length, cities: cities.size, countries: countries.size };
+}
+
 /** Places whose point falls inside the given map viewport (PostGIS ST_Within). */
 export async function getPlacesInBounds(bounds: MapBounds): Promise<Place[]> {
   const supabase = createClient();
