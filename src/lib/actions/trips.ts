@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { mapPlaceRow, type PlaceRow } from "@/lib/mappers";
+import { optimiseOrder } from "@/lib/route";
 import type { Trip, TripItem, TripWithItems } from "@/types/database";
 
 interface TripItemRow {
@@ -173,6 +174,113 @@ export async function addPlaceToTrip(
   if (error) throw new Error(`addPlaceToTrip: ${error.message}`);
   revalidatePath(`/trip/${input.tripId}`);
   return data as TripItem;
+}
+
+export interface TripItemPosition {
+  id: string;
+  dayNumber: number;
+  orderIndex: number;
+}
+
+/** Persists a new day/order arrangement after a drag-reorder. */
+export async function reorderTripItems(
+  tripId: string,
+  positions: TripItemPosition[]
+): Promise<void> {
+  await requireUser();
+  const supabase = createClient();
+  await Promise.all(
+    positions.map((p) =>
+      supabase
+        .from("trip_items")
+        .update({ day_number: p.dayNumber, order_index: p.orderIndex })
+        .eq("id", p.id)
+        .eq("trip_id", tripId)
+    )
+  );
+  revalidatePath(`/trip/${tripId}`);
+}
+
+/**
+ * Orders the trip's places into an efficient route (nearest-neighbour + 2-opt
+ * over haversine distances), splits them across the trip's days, and writes
+ * back day_number + order_index + a per-day route_geojson. Deterministic.
+ */
+export async function optimiseTrip(
+  tripId: string
+): Promise<TripWithItems | null> {
+  const user = await requireUser();
+  const supabase = createClient();
+
+  const { data: tripRow, error: tripErr } = await supabase
+    .from("trips")
+    .select("*")
+    .eq("id", tripId)
+    .maybeSingle();
+  if (tripErr) throw new Error(`optimiseTrip.trip: ${tripErr.message}`);
+  const trip = tripRow as Trip | null;
+  if (!trip) return null;
+  if (trip.user_id !== user.id) throw new Error("Not your trip.");
+
+  const items = await loadTripItems(supabase, tripId);
+  if (items.length === 0) return { ...trip, items };
+
+  const located = items.filter((i) => i.place?.location);
+  const unlocated = items.filter((i) => !i.place?.location);
+  const points = located.map((i) => i.place!.location!);
+
+  const all = [...located, ...unlocated];
+  const dayBuckets = optimiseOrder(points, trip.days ?? 1);
+  // Park any place we can't geo-locate at the end of the last day. Their
+  // indices into `all` start right after the located items.
+  if (unlocated.length > 0) {
+    const last = dayBuckets.length - 1;
+    dayBuckets[last] = [
+      ...dayBuckets[last],
+      ...unlocated.map((_, k) => located.length + k),
+    ];
+  }
+
+  const positions: TripItemPosition[] = [];
+  const features: Record<string, unknown>[] = [];
+  dayBuckets.forEach((bucket, di) => {
+    const dayNumber = di + 1;
+    const line: [number, number][] = [];
+    bucket.forEach((idx, orderIndex) => {
+      const item = all[idx];
+      positions.push({ id: item.id, dayNumber, orderIndex });
+      if (item.place?.location) {
+        line.push([item.place.location.lng, item.place.location.lat]);
+      }
+    });
+    if (line.length >= 2) {
+      features.push({
+        type: "Feature",
+        properties: { day: dayNumber },
+        geometry: { type: "LineString", coordinates: line },
+      });
+    }
+  });
+
+  const routeGeojson = { type: "FeatureCollection", features };
+
+  await Promise.all(
+    positions.map((p) =>
+      supabase
+        .from("trip_items")
+        .update({ day_number: p.dayNumber, order_index: p.orderIndex })
+        .eq("id", p.id)
+        .eq("trip_id", tripId)
+    )
+  );
+  await supabase
+    .from("trips")
+    .update({ route_geojson: routeGeojson })
+    .eq("id", tripId);
+
+  revalidatePath(`/trip/${tripId}`);
+  const refreshed = await loadTripItems(supabase, tripId);
+  return { ...trip, route_geojson: routeGeojson, items: refreshed };
 }
 
 export async function removeTripItem(itemId: string): Promise<void> {
