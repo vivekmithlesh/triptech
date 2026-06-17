@@ -172,6 +172,8 @@ export interface PlaceFilters {
   historicOnly?: boolean;
   /** Case-insensitive match against the place name. */
   search?: string;
+  /** Broad destination query — matches place name OR city (case-insensitive). */
+  q?: string;
   limit?: number;
   sort?: "rating" | "reviews" | "name";
 }

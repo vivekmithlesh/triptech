@@ -17,6 +17,12 @@ export async function getPlaces(filters: PlaceFilters = {}): Promise<Place[]> {
     query = query.lte("price_level", filters.maxPrice);
   if (filters.historicOnly) query = query.eq("is_historic", true);
   if (filters.search) query = query.ilike("name", `%${filters.search}%`);
+  if (filters.q) {
+    // Broad destination match: place name OR city. Strip PostgREST-special
+    // chars so the or() filter can't be broken by user input.
+    const term = filters.q.replace(/[,()*]/g, " ").trim();
+    if (term) query = query.or(`name.ilike.%${term}%,city.ilike.%${term}%`);
+  }
 
   const sort = filters.sort ?? "rating";
   if (sort === "reviews") {
