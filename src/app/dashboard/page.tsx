@@ -1,146 +1,250 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { format } from "date-fns";
-import { Compass } from "lucide-react";
-
-import { requireUser, getProfile } from "@/lib/auth";
-import { UserMenu } from "@/components/UserMenu";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  ArrowRight,
+  BookOpen,
+  Coins,
+  Compass,
+  Heart,
+  MapPin,
+  Sparkles,
+} from "lucide-react";
 
-export const metadata: Metadata = {
-  title: "Dashboard · Roamio",
-};
+import { getMyProfile } from "@/lib/actions/profile";
+import { getMyTrips, getTripById } from "@/lib/actions/trips";
+import { getSavedPlaces } from "@/lib/actions/saved";
+import { getMyJournal } from "@/lib/actions/journal";
+import { formatDateRange } from "@/lib/utils";
+import { PlaceCard } from "@/components/PlaceCard";
+import { CreateTripDialog } from "@/components/dashboard/CreateTripDialog";
+import { MiniTripMap } from "@/components/dashboard/MiniTripMap";
+import { Button } from "@/components/ui/button";
 
-// NOTE: minimal placeholder. Brick 11 replaces this with the full dashboard
-// (stat cards, upcoming trips, saved places, journal). It already reads REAL
-// data — the signed-in user and their profile row — so it verifies Brick 04.
-export default async function DashboardPage() {
-  const user = await requireUser();
-  const profile = await getProfile();
+export const metadata: Metadata = { title: "Dashboard" };
 
-  const preferences = (profile?.preferences ?? {}) as {
-    interests?: string[];
-    travel_style?: string;
-  };
-  const interests = preferences.interests ?? [];
+async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await p;
+  } catch {
+    return fallback;
+  }
+}
+
+export default async function DashboardOverview() {
+  const profile = await safe(getMyProfile(), null);
+  const [trips, saved, journal] = await Promise.all([
+    safe(getMyTrips(), []),
+    safe(getSavedPlaces(), []),
+    safe(getMyJournal(), []),
+  ]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming =
+    trips
+      .filter((t) => t.start_date && t.start_date >= today)
+      .sort((a, b) => (a.start_date! < b.start_date! ? -1 : 1))[0] ??
+    trips[0] ??
+    null;
+  const upcomingFull = upcoming
+    ? await safe(getTripById(upcoming.id), null)
+    : null;
+  const upcomingItems = upcomingFull?.items ?? [];
+
+  const stats = [
+    { label: "Trips", value: trips.length, icon: MapPin },
+    { label: "Saved places", value: saved.length, icon: Heart },
+    { label: "Journal entries", value: journal.length, icon: BookOpen },
+    { label: "TripCoins", value: profile?.tripcoins ?? 0, icon: Coins },
+  ];
+
+  const savedPreview = saved.filter((s) => s.place).slice(0, 4);
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="border-b bg-background">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <Compass className="h-5 w-5 text-primary" />
-            Roamio
-          </Link>
-          <UserMenu
-            email={user.email ?? ""}
-            fullName={profile?.full_name}
-            avatarUrl={profile?.avatar_url}
-          />
+    <div className="mx-auto max-w-6xl space-y-8">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            Welcome back{profile?.full_name ? `, ${profile.full_name}` : ""}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Your trips, saved places and journal — all in one place.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <CreateTripDialog />
+          <Button asChild variant="outline">
+            <Link href="/explore">
+              <Compass className="h-4 w-4" />
+              Explore
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/assistant">
+              <Sparkles className="h-4 w-4 text-brand" />
+              Ask AI
+            </Link>
+          </Button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Welcome back{profile?.full_name ? `, ${profile.full_name}` : ""} 👋
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            You&apos;re signed in. The full dashboard arrives in a later brick.
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>TripCoins</CardDescription>
-              <CardTitle className="text-3xl">{profile?.tripcoins ?? 0}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Home currency</CardDescription>
-              <CardTitle className="text-3xl">
-                {profile?.home_currency ?? "INR"}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Member since</CardDescription>
-              <CardTitle className="text-3xl">
-                {profile?.created_at
-                  ? format(new Date(profile.created_at), "MMM yyyy")
-                  : "—"}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Your account</CardTitle>
-            <CardDescription>Captured at sign-up — real data from Supabase.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <Row label="Name" value={profile?.full_name ?? "—"} />
-            <Row label="Email" value={user.email ?? "—"} />
-            <Row
-              label="Travel style"
-              value={
-                preferences.travel_style
-                  ? preferences.travel_style[0]!.toUpperCase() +
-                    preferences.travel_style.slice(1)
-                  : "—"
-              }
-            />
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-muted-foreground">Interests</span>
-              <div className="flex flex-wrap justify-end gap-1.5">
-                {interests.length > 0 ? (
-                  interests.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
-                    >
-                      {tag}
-                    </span>
-                  ))
-                ) : (
-                  <span>—</span>
-                )}
-              </div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-xl border bg-card p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <s.icon className="h-4 w-4 text-brand" />
+              {s.label}
             </div>
-          </CardContent>
-        </Card>
+            <p className="mt-2 text-3xl font-semibold">{s.value}</p>
+          </div>
+        ))}
+      </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Button asChild>
-            <Link href="/">Explore</Link>
-          </Button>
-          <form action="/auth/signout" method="post">
-            <Button type="submit" variant="outline">
-              Sign out
+      {/* Upcoming trip */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Upcoming trip</h2>
+        {upcomingFull ? (
+          <div className="grid gap-4 overflow-hidden rounded-2xl border bg-card lg:grid-cols-[1fr_360px]">
+            <div className="space-y-3 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-semibold">{upcomingFull.title}</h3>
+                  <p className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
+                    {upcomingFull.destination && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {upcomingFull.destination}
+                      </span>
+                    )}
+                    {formatDateRange(
+                      upcomingFull.start_date,
+                      upcomingFull.end_date
+                    ) && (
+                      <span>
+                        {formatDateRange(
+                          upcomingFull.start_date,
+                          upcomingFull.end_date
+                        )}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {upcomingItems.length} stop
+                {upcomingItems.length === 1 ? "" : "s"} planned
+              </p>
+              <Button asChild>
+                <Link href={`/trip/${upcomingFull.id}`}>
+                  Open planner
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+            <div className="h-56 lg:h-auto">
+              {upcomingItems.some((i) => i.place?.location) ? (
+                <MiniTripMap items={upcomingItems} />
+              ) : (
+                <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
+                  Add places to see the map
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No trips yet"
+            body="Plan your first trip and start adding places."
+            action={<CreateTripDialog />}
+          />
+        )}
+      </section>
+
+      {/* Saved places */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Saved places</h2>
+          {savedPreview.length > 0 && (
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard/saved">
+                View all
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
-          </form>
+          )}
         </div>
-      </main>
+        {savedPreview.length > 0 ? (
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {savedPreview.map((s) => (
+              <PlaceCard key={s.id} place={s.place!} initialSaved />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="Nothing saved yet"
+            body="Tap the heart on any place to save it here."
+            action={
+              <Button asChild>
+                <Link href="/explore">Explore places</Link>
+              </Button>
+            }
+          />
+        )}
+      </section>
+
+      {/* Recent journal */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Recent journal</h2>
+          {journal.length > 0 && (
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/journal">
+                Open journal
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          )}
+        </div>
+        {journal.length > 0 ? (
+          <ul className="space-y-2">
+            {journal.slice(0, 3).map((e) => (
+              <li key={e.id} className="rounded-xl border bg-card p-4">
+                {e.rating != null && (
+                  <p className="text-sm font-medium text-brand">
+                    {"★".repeat(e.rating)}
+                  </p>
+                )}
+                <p className="line-clamp-2 text-sm">{e.body ?? "—"}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState
+            title="Your journal is empty"
+            body="Memories from your trips will appear here."
+          />
+        )}
+      </section>
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function EmptyState({
+  title,
+  body,
+  action,
+}: {
+  title: string;
+  body: string;
+  action?: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed p-10 text-center">
+      <div>
+        <p className="font-medium">{title}</p>
+        <p className="text-sm text-muted-foreground">{body}</p>
+      </div>
+      {action}
     </div>
   );
 }
