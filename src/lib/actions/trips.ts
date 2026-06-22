@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { mapPlaceRow, type PlaceRow } from "@/lib/mappers";
 import { optimiseOrder } from "@/lib/route";
+import { slugify } from "@/lib/slug";
 import type { Trip, TripItem, TripWithItems } from "@/types/database";
 
 interface TripItemRow {
@@ -17,16 +18,6 @@ interface TripItemRow {
   arrival_time: string | null;
   notes: string | null;
   created_at: string;
-}
-
-function slugify(title: string): string {
-  const base = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${base || "trip"}-${suffix}`;
 }
 
 /** Loads a trip's ordered items with each item's place populated. */

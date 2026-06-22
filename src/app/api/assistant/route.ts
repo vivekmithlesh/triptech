@@ -5,6 +5,7 @@ import { getUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { embed } from "@/lib/ai/embeddings";
 import { retrieveChunks, type RetrievedChunk } from "@/lib/ai/retrieve";
+import { reportError, reportWarning } from "@/lib/observability";
 
 export const runtime = "nodejs";
 
@@ -18,21 +19,42 @@ function anthropic(): Anthropic {
   return _anthropic;
 }
 
-// Lightweight per-user, per-process rate limit (cost guard). Brick 15 swaps
-// this for a shared store; in-memory is fine for a single instance / v1.
-const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 20;
-const hits = new Map<string, number[]>();
-function rateLimited(userId: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(userId) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  if (recent.length >= RATE_MAX) {
-    hits.set(userId, recent);
-    return true;
+// Shared, DB-backed rate limit + daily cost cap (migrations/0003). Configurable
+// via env so caps can be tuned per environment without a redeploy of logic.
+const RATE_WINDOW_MINUTES = num(process.env.AI_RATE_LIMIT_WINDOW_MINUTES, 60);
+const RATE_MAX_PER_WINDOW = num(process.env.AI_MAX_MESSAGES_PER_HOUR, 20);
+const RATE_MAX_PER_DAY = num(process.env.AI_MAX_MESSAGES_PER_DAY, 100);
+
+function num(v: string | undefined, fallback: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+interface UsageResult {
+  allowed: boolean;
+  reason?: string;
+  retry_after_seconds?: number;
+}
+
+/**
+ * Atomically checks + records one AI message against the caller's quota via the
+ * SECURITY DEFINER `record_ai_usage` RPC (auth.uid() is derived server-side, so
+ * it can't be spoofed). Fails CLOSED on error — cost protection beats
+ * availability for an LLM endpoint.
+ */
+async function checkRateLimit(
+  supabase: ReturnType<typeof createClient>
+): Promise<UsageResult> {
+  const { data, error } = await supabase.rpc("record_ai_usage", {
+    p_max_per_window: RATE_MAX_PER_WINDOW,
+    p_max_per_day: RATE_MAX_PER_DAY,
+    p_window_minutes: RATE_WINDOW_MINUTES,
+  });
+  if (error) {
+    reportError(error, { source: "assistant.record_ai_usage" });
+    return { allowed: false, reason: "error" };
   }
-  recent.push(now);
-  hits.set(userId, recent);
-  return false;
+  return (data ?? { allowed: false, reason: "error" }) as UsageResult;
 }
 
 interface AssistantBody {
@@ -79,10 +101,6 @@ function buildSystemPrompt(
 export async function POST(req: NextRequest) {
   const user = await getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
-  if (rateLimited(user.id))
-    return new Response("Too many messages — please wait a moment.", {
-      status: 429,
-    });
 
   let body: AssistantBody;
   try {
@@ -96,6 +114,27 @@ export async function POST(req: NextRequest) {
   const mode = body.mode === "receptionist" ? "receptionist" : "guide";
 
   const supabase = createClient();
+
+  // Shared rate limit + daily cap BEFORE any paid AI call. Records the message
+  // atomically; denied requests never reach OpenAI/Claude.
+  const usage = await checkRateLimit(supabase);
+  if (!usage.allowed) {
+    reportWarning("AI request denied by rate limit", {
+      userId: user.id,
+      reason: usage.reason,
+    });
+    const status = usage.reason === "error" ? 503 : 429;
+    const msg =
+      usage.reason === "daily"
+        ? "You've reached today's AI message limit. Please try again tomorrow."
+        : usage.reason === "error"
+          ? "The AI guide is temporarily unavailable. Please try again shortly."
+          : "Too many messages — please wait a moment and try again.";
+    const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8" };
+    if (usage.retry_after_seconds)
+      headers["Retry-After"] = String(usage.retry_after_seconds);
+    return new Response(msg, { status, headers });
+  }
 
   // Build live context from the place / city the traveller is looking at.
   let liveContext = "";
@@ -124,7 +163,9 @@ export async function POST(req: NextRequest) {
         ? `Just landed in ${body.city ?? message}. Arrival brief: SIM, transport, food, where to stay, safety.`
         : message;
     chunks = await retrieveChunks(await embed(query), 6);
-  } catch {
+  } catch (e) {
+    // Degrade to no-context so the model declines rather than hallucinating.
+    reportError(e, { source: "assistant.retrieve", userId: user.id });
     chunks = [];
   }
 
@@ -161,7 +202,8 @@ export async function POST(req: NextRequest) {
             controller.enqueue(encoder.encode(event.delta.text));
           }
         }
-      } catch {
+      } catch (e) {
+        reportError(e, { source: "assistant.stream", userId: user.id });
         const fallback =
           "\n\n[Sorry — the AI guide hit an error. Please try again in a moment.]";
         assistantText += fallback;

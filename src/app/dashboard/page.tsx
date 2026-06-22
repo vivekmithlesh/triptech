@@ -17,20 +17,13 @@ import { getSavedPlaces } from "@/lib/actions/saved";
 import { getMyJournal } from "@/lib/actions/journal";
 import { getFestivalAlertsForUser } from "@/lib/actions/weather";
 import { formatDateRange } from "@/lib/utils";
+import { safeAsync as safe } from "@/lib/observability";
 import { PlaceCard } from "@/components/PlaceCard";
 import { CreateTripDialog } from "@/components/dashboard/CreateTripDialog";
 import { MiniTripMap } from "@/components/dashboard/MiniTripMap";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = { title: "Dashboard" };
-
-async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await p;
-  } catch {
-    return fallback;
-  }
-}
 
 export default async function DashboardOverview() {
   const profile = await safe(getMyProfile(), null);

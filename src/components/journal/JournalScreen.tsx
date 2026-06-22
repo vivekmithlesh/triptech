@@ -4,16 +4,9 @@ import { getSavedPlaces } from "@/lib/actions/saved";
 import { getPlacesByIds } from "@/lib/actions/places";
 import { getMyProfile } from "@/lib/actions/profile";
 import { requireUser } from "@/lib/auth";
+import { safeAsync as safe } from "@/lib/observability";
 import type { Place } from "@/types/database";
 import { JournalView } from "@/components/journal/JournalView";
-
-async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await p;
-  } catch {
-    return fallback;
-  }
-}
 
 /** Server component: loads the journal data and renders the timeline. Shared by
  * /journal and /dashboard/journal. */

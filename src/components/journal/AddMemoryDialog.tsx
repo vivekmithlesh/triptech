@@ -7,6 +7,13 @@ import { toast } from "sonner";
 
 import { createEntry } from "@/lib/actions/journal";
 import { createClient } from "@/lib/supabase/client";
+import { reportError } from "@/lib/observability";
+import {
+  JOURNAL_PHOTO_BUCKET,
+  MAX_PHOTOS_PER_ENTRY,
+  buildJournalPhotoPath,
+  validateImageFiles,
+} from "@/lib/upload";
 import { cn } from "@/lib/utils";
 import type { Place, Trip } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -60,22 +67,26 @@ export function AddMemoryDialog({
     setFiles([]);
   }
 
-  async function uploadPhotos(): Promise<string[]> {
-    if (files.length === 0) return [];
+  // Uploads validated photos to the user's own Storage folder. Returns both the
+  // public URLs (persisted on the entry) and the object paths (for cleanup if
+  // the DB insert later fails).
+  async function uploadPhotos(): Promise<{ urls: string[]; paths: string[] }> {
+    if (files.length === 0) return { urls: [], paths: [] };
     const supabase = createClient();
     const urls: string[] = [];
-    for (const file of files.slice(0, 4)) {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-      const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+    const paths: string[] = [];
+    for (const file of files) {
+      const path = buildJournalPhotoPath(userId, file.name);
       const { error } = await supabase.storage
-        .from("journal-photos")
+        .from(JOURNAL_PHOTO_BUCKET)
         .upload(path, file, { upsert: false, contentType: file.type });
       if (error) throw error;
+      paths.push(path);
       urls.push(
-        supabase.storage.from("journal-photos").getPublicUrl(path).data.publicUrl
+        supabase.storage.from(JOURNAL_PHOTO_BUCKET).getPublicUrl(path).data.publicUrl
       );
     }
-    return urls;
+    return { urls, paths };
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -84,23 +95,66 @@ export function AddMemoryDialog({
       toast.error("Add a note, rating, or photo first.");
       return;
     }
+    // Validate type/size/count up front so we never start an upload we can't finish.
+    if (files.length > 0) {
+      const check = validateImageFiles(files);
+      if (!check.ok) {
+        toast.error(check.error);
+        return;
+      }
+    }
+
     startTransition(async () => {
+      let uploadedPaths: string[] = [];
       try {
-        const photoUrls = await uploadPhotos();
-        await createEntry({
-          body: body.trim() || null,
-          rating: rating || null,
-          tripId: tripId === NONE ? null : tripId,
-          placeId: placeId === NONE ? null : placeId,
-          visitedAt: visitedAt || null,
-          photoUrls,
-        });
+        // 1. Upload photos (storage RLS enforces the per-user folder + MIME/size).
+        let urls: string[] = [];
+        try {
+          const res = await uploadPhotos();
+          urls = res.urls;
+          uploadedPaths = res.paths;
+        } catch (err) {
+          reportError(err, { source: "AddMemoryDialog.uploadPhotos", userId });
+          toast.error("Photo upload failed. Check the file type/size and try again.");
+          return;
+        }
+
+        // 2. Persist the entry. Only now do we treat it as success.
+        try {
+          await createEntry({
+            body: body.trim() || null,
+            rating: rating || null,
+            tripId: tripId === NONE ? null : tripId,
+            placeId: placeId === NONE ? null : placeId,
+            visitedAt: visitedAt || null,
+            photoUrls: urls,
+          });
+        } catch (err) {
+          // DB insert failed after upload — clean up the orphaned files.
+          if (uploadedPaths.length > 0) {
+            try {
+              await createClient()
+                .storage.from(JOURNAL_PHOTO_BUCKET)
+                .remove(uploadedPaths);
+            } catch (cleanupErr) {
+              reportError(cleanupErr, {
+                source: "AddMemoryDialog.cleanup",
+                paths: uploadedPaths,
+              });
+            }
+          }
+          reportError(err, { source: "AddMemoryDialog.createEntry", userId });
+          toast.error("Couldn't save that memory. Please try again.");
+          return;
+        }
+
         toast.success("Memory added");
         reset();
         setOpen(false);
         router.refresh();
-      } catch {
-        toast.error("Couldn't save that memory. (Photo upload may need storage access.)");
+      } catch (err) {
+        reportError(err, { source: "AddMemoryDialog.onSubmit", userId });
+        toast.error("Something went wrong. Please try again.");
       }
     });
   }
@@ -202,10 +256,20 @@ export function AddMemoryDialog({
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif"
               multiple
               hidden
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              onChange={(e) => {
+                const picked = Array.from(e.target.files ?? []);
+                const check = validateImageFiles(picked);
+                if (!check.ok) {
+                  toast.error(check.error);
+                  if (fileRef.current) fileRef.current.value = "";
+                  setFiles([]);
+                  return;
+                }
+                setFiles(picked);
+              }}
             />
             <Button
               type="button"
@@ -217,11 +281,9 @@ export function AddMemoryDialog({
                 ? `${files.length} photo${files.length > 1 ? "s" : ""} selected`
                 : "Add photos"}
             </Button>
-            {files.length > 4 && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Only the first 4 photos will be uploaded.
-              </p>
-            )}
+            <p className="mt-1 text-xs text-muted-foreground">
+              Up to {MAX_PHOTOS_PER_ENTRY} photos · JPEG, PNG, WebP or GIF · max 5MB each.
+            </p>
           </div>
 
           <DialogFooter>

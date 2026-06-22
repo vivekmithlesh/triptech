@@ -14,6 +14,8 @@ import { List, MapIcon, Search, X } from "lucide-react";
 
 import { getPlacesInBounds } from "@/lib/actions/places";
 import type { MapBounds, Place, Trip } from "@/types/database";
+import { applyPlaceFilters } from "@/lib/filters";
+import { reportError } from "@/lib/observability";
 import { cn } from "@/lib/utils";
 import { PlaceCard } from "@/components/PlaceCard";
 import { AddToTripButton } from "@/components/explore/AddToTripButton";
@@ -30,21 +32,6 @@ const PlaceMap = dynamic(() => import("@/components/PlaceMap"), {
   ssr: false,
   loading: () => <div className="h-full w-full animate-pulse bg-muted" />,
 });
-
-function applyFilters(places: Place[], f: ExploreFiltersState): Place[] {
-  const q = f.q?.toLowerCase().trim();
-  return places.filter((p) => {
-    if (f.category && p.category !== f.category) return false;
-    if (f.maxPrice != null && (p.price_level ?? 99) > f.maxPrice) return false;
-    if (f.minRating != null && (p.rating ?? 0) < f.minRating) return false;
-    if (f.historicOnly && !p.is_historic) return false;
-    if (q) {
-      const hay = `${p.name} ${p.city ?? ""}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
-}
 
 function buildQuery(f: ExploreFiltersState): string {
   const p = new URLSearchParams();
@@ -133,9 +120,10 @@ export function ExploreClient({
         setBoundsLoading(true);
         try {
           const inBounds = await getPlacesInBounds(b);
-          setPlaces(applyFilters(inBounds, filters));
-        } catch {
-          /* keep the current list on a transient error */
+          setPlaces(applyPlaceFilters(inBounds, filters));
+        } catch (e) {
+          // Keep the current list on a transient error, but record it.
+          reportError(e, { source: "ExploreClient.onBoundsChange" });
         } finally {
           setBoundsLoading(false);
         }

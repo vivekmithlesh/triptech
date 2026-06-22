@@ -1,0 +1,14 @@
+// Rename to sentry.client.config.ts after `npm i @sentry/nextjs`.
+// See docs/SENTRY_SETUP.md.
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
+  tracesSampleRate: 0.1,
+  replaysSessionSampleRate: 0,
+  replaysOnErrorSampleRate: 0,
+  sendDefaultPii: false,
+});
+
+(globalThis as unknown as { __roamioSentry: typeof Sentry }).__roamioSentry = Sentry;

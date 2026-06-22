@@ -55,6 +55,9 @@ create table if not exists public.places (
   cover_image  text,
   images       text[] not null default '{}'::text[],
   external_ids jsonb  not null default '{}'::jsonb,
+  -- Denormalised wishlist counter, maintained by triggers on saved_places
+  -- (migrations/0004). Avoids a correlated count(*) on every place read.
+  save_count   int  not null default 0,
   created_at   timestamptz not null default now()
 );
 

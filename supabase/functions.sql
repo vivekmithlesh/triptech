@@ -10,9 +10,9 @@
 --   - places_in_bounds(...)  : PostGIS ST_Within over a map viewport envelope.
 --   - places_nearby(...)     : PostGIS ST_DWithin radius search (km), nearest first.
 --
--- Security: these expose only public-read data (places + festivals). The
--- save_count aggregate is global and intentionally bypasses saved_places RLS
--- (counts only, never rows). Idempotent: safe to re-run.
+-- Security: these expose only public-read data (places + festivals). save_count
+-- is a denormalised global counter column on places (a count, never rows), kept
+-- in sync by triggers on saved_places (migrations/0004). Idempotent: safe to re-run.
 -- =============================================================================
 
 set search_path = public, extensions;
@@ -40,10 +40,9 @@ select
   p.images,
   p.external_ids,
   p.created_at,
-  coalesce(
-    (select count(*) from public.saved_places s where s.place_id = p.id),
-    0
-  )::int as save_count
+  -- save_count is a maintained column on places (migrations/0004) — no longer a
+  -- correlated subquery. Triggers on saved_places keep it in sync.
+  p.save_count
 from public.places p;
 
 grant select on public.places_with_coords to anon, authenticated;

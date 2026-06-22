@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 
+import { reportError } from "@/lib/observability";
 import { Button } from "@/components/ui/button";
 
 export default function Error({
@@ -14,7 +15,7 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    reportError(error, { source: "app/error.tsx", digest: error.digest });
   }, [error]);
 
   return (

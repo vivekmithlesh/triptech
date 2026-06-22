@@ -23,19 +23,11 @@ import { getSavedPlaceIds } from "@/lib/actions/saved";
 import { getUser } from "@/lib/auth";
 import { CATEGORIES, type CategoryMeta } from "@/lib/constants";
 import { cn, formatDateRange, formatLocation } from "@/lib/utils";
+import { safeAsync as safe } from "@/lib/observability";
 import { PlaceCard } from "@/components/PlaceCard";
 import { DestinationSearch } from "@/components/home/DestinationSearch";
 import { Reveal } from "@/components/home/Reveal";
 import { Button } from "@/components/ui/button";
-
-// Degrade gracefully if the catalog/views aren't seeded yet (Bricks 03/05).
-async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await p;
-  } catch {
-    return fallback;
-  }
-}
 
 const HOW_IT_WORKS = [
   {
